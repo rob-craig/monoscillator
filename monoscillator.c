@@ -24,7 +24,7 @@
 
 typedef jack_default_audio_sample_t sample_t;
 
-/* global variables */
+/* variables */
 double volume;
 static const double PI = 3.14159265359;
 
@@ -61,7 +61,7 @@ double midiToFreq(jack_midi_data_t note){
 }
 
 void addNote(jack_midi_data_t add_note){
-    printf("numPressedNotes=%d", numPressedNotes);
+    printf("numPressedNotes=%d\n", numPressedNotes);
     if(numPressedNotes > 128){
         fprintf(stderr, "Too many simultaneous notes pressed");
         exit(1);
@@ -147,8 +147,8 @@ int main(int argc, char* argv[])
     offset=0;
     frequency=0; //zero frequency generates silence
 
-    if ((client = jack_client_open("oscillator", JackUseExactName, NULL)) == 0) {
-        printf("Error registering oscillator with JACK.\n");
+    if ((client = jack_client_open("monoscillator", JackUseExactName, NULL)) == 0) {
+        printf("Error registering monoscillator with JACK.\n");
         exit(1);
     }
 
@@ -162,13 +162,13 @@ int main(int argc, char* argv[])
     midi_input_port = jack_port_register(client, "midi_in", JACK_DEFAULT_MIDI_TYPE, JackPortIsInput, 0);
     
     if (jack_activate (client)) {
-        printf("Failed to activate JACK client.");
+        printf("Failed to activate JACK client.\n");
         exit(1);
     }
 
     // set up gui
     mainWindow  = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(mainWindow), "oscillator");
+    gtk_window_set_title(GTK_WINDOW(mainWindow), "monoscillator");
     gtk_window_set_default_size(GTK_WINDOW(mainWindow),
                                 35,
                                 200);
