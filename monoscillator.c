@@ -21,11 +21,19 @@
 
 #include <stdlib.h>
 #include <math.h>
+#include <stdbool.h>
 
 typedef jack_default_audio_sample_t sample_t;
 
 /* variables */
 double volume;
+
+double attack_env;
+double attack_rate;
+double release_env;
+double release_rate;
+bool release_in_progress;
+
 static const double PI = 3.14159265359;
 
 jack_client_t *client;
@@ -61,33 +69,44 @@ double midiToFreq(jack_midi_data_t note){
 }
 
 void addNote(jack_midi_data_t add_note){
-    printf("numPressedNotes=%d\n", numPressedNotes);
+    //printf("numPressedNotes=%d\n", numPressedNotes);
+    printf("you pressed a note: %lu \n", (long)add_note);
+    attack_env = 0.0;
+
     if(numPressedNotes > 128){
         fprintf(stderr, "Too many simultaneous notes pressed");
         exit(1);
-    } else {
-        *(pressedNotes+numPressedNotes)=add_note;
-        numPressedNotes++;
     }
+
+    *(pressedNotes+numPressedNotes)=add_note;
+    numPressedNotes++;
 
 }
 
 void removeNote(jack_midi_data_t rm_note){
     
-    if(numPressedNotes < 0){
+    printf("you released a note: %lu \n", (long)rm_note);
+
+    if(numPressedNotes <= 0) {
         fprintf(stderr, "Tried to remove a note but none were found");
         exit(1);
-    } else {
-        for (int i=0;i<numPressedNotes;i++){
-            if (pressedNotes[i] == rm_note){
-                for(int j=i;j<numPressedNotes;j++){   
-                    pressedNotes[j]=pressedNotes[j+1];    
-                }
-                break;
-            }       
-        }                   
-        numPressedNotes--;
     }
+    
+    for (int i=0;i<numPressedNotes;i++){
+        if (pressedNotes[i] == rm_note){
+            for(int j=i;j<numPressedNotes;j++){   
+                pressedNotes[j]=pressedNotes[j+1];    
+            }
+            break;
+        }       
+    }                   
+    numPressedNotes--;
+
+    //if(numPressedNotes <= 0) {
+        release_env = 1.0;
+        release_in_progress = true;
+    //}
+    
 }
 
 void adjust_volume (GtkWidget *vScale,
@@ -96,6 +115,7 @@ void adjust_volume (GtkWidget *vScale,
 
     volume = (gtk_range_get_value(GTK_RANGE(vScale))/100.0);      
     printf("%f\n", volume);
+
 }
 
 int get_srate(jack_nframes_t nframes, void* arg){
@@ -123,15 +143,34 @@ int process(jack_nframes_t nframes, void *arg){
     }
 
     //set the frequency to the most recently pressed note
-    frequency = 0;
-    if (numPressedNotes>0){
+    if (numPressedNotes>0) {
         frequency = midiToFreq(pressedNotes[numPressedNotes-1]);
+    }
+
+    // handle attack
+    if (attack_env < 1.0) {
+        attack_env += attack_rate;
+    }
+
+    if (attack_env > 1.0) {
+        attack_env = 1.0;
+    }
+
+    // handle release
+    if (release_in_progress == true) {
+        if (release_env >= 0.0) {
+            release_env = 1.0;
+            release_in_progress = false;
+            frequency = 0;
+        } else {
+            release_env -= release_rate;
+        }
     }
 
     sample_t *out = (sample_t *)jack_port_get_buffer(output_port, nframes);
 
-    for(i=0;i<nframes;i++){
-        out[i]=(sin(2*PI*frequency*offset/samplerate))*volume;
+    for(i=0;i<nframes;i++) {
+        out[i]=(sin(2*PI*frequency*offset/samplerate))*volume*attack_env*release_env;
         offset++;
     }
     return 0;
@@ -142,6 +181,10 @@ int main(int argc, char* argv[])
     gtk_init(&argc,&argv); // initialize gtk
 
     volume = 0.5;
+    attack_env = 1.0;
+    attack_rate = 0.03;
+    release_env = 1.0;
+    release_rate = 0.03;
     pressedNotes = malloc(sizeof(jack_midi_data_t)*128); 
     numPressedNotes = 0;
     offset=0;
